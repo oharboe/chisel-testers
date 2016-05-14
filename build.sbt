@@ -1,5 +1,5 @@
 organization := "edu.berkeley.cs"
-version := "1.0"
+version := "1.1-BETA"
 name := "Chisel.iotesters"
 
 scalaVersion := "2.11.7"
