@@ -54,7 +54,6 @@ publishTo <<= version { v: String =>
   }
 }
 
-
 resolvers ++= Seq(
   Resolver.sonatypeRepo("snapshots"),
   Resolver.sonatypeRepo("releases")
