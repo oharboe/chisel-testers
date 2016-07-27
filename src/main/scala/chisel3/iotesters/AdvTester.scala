@@ -3,8 +3,7 @@
 package chisel3.iotesters
 
 /* Written by Stephen Twigg, Eric Love */
-import chisel3._
-import chisel3.util._
+import Chisel._
 
 import scala.collection.mutable.ArrayBuffer
 

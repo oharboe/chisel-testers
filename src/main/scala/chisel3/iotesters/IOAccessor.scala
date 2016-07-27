@@ -3,6 +3,8 @@
 package chisel3.iotesters
 
 import chisel3._
+import chisel3.core.Element
+import chisel3.internal.firrtl.Port
 import chisel3.util._
 
 import scala.collection.mutable
@@ -13,31 +15,35 @@ import scala.util.matching.Regex
  * used for building testing harnesses
  */
 class IOAccessor(val device_io: Bundle, verbose: Boolean = true) {
-  val ports_referenced = new mutable.HashSet[Data]
+  val ports_referenced = new mutable.HashSet[IOType]
 
-  val dut_inputs                 = new mutable.HashSet[Data]()
-  val dut_outputs                = new mutable.HashSet[Data]()
+  val dut_inputs                 = new mutable.HashSet[IOType]()
+  val dut_outputs                = new mutable.HashSet[IOType]()
 
-  val name_to_decoupled_port = new mutable.HashMap[String, DecoupledIO[Data]]()
-  val name_to_valid_port     = new mutable.HashMap[String, ValidIO[Data]]()
+  val name_to_decoupled_port = new mutable.HashMap[String, DecoupledIO[IOType]]()
+  val name_to_valid_port     = new mutable.HashMap[String, ValidIO[IOType]]()
 
   val port_to_name = {
-    val port_to_name_accumulator = new mutable.HashMap[Data, String]()
+    val port_to_name_accumulator = new mutable.HashMap[IOType, String]()
 
-    def checkDecoupledOrValid(port: Data, name: String): Unit = {
+    def checkDecoupledOrValid(port: IOType, name: String): Unit = {
       port match {
-        case decoupled_port : DecoupledIO[Data] =>
+        case decoupled_port : DecoupledIO[IOType] =>
           name_to_decoupled_port(name) = decoupled_port
-        case valid_port : ValidIO[Data] =>
+        case valid_port : ValidIO[IOType] =>
           name_to_valid_port(name) = valid_port
         case _ =>
       }
     }
 
-    def add_to_ports_by_direction(port: Data): Unit = {
-      port.dir match {
-        case INPUT => dut_inputs += port
-        case OUTPUT => dut_outputs += port
+    def add_to_ports_by_direction(port: IOType): Unit = {
+      port match {
+        case e: Element =>
+          e.dir match {
+            case INPUT => dut_inputs += port
+            case OUTPUT => dut_outputs += port
+            case _ =>
+          }
         case _ =>
       }
     }
@@ -58,7 +64,7 @@ class IOAccessor(val device_io: Bundle, verbose: Boolean = true) {
         checkDecoupledOrValid(e, new_name)
       }
     }
-    def parseVecs[T<:Data](b: Vec[T], name: String = ""): Unit = {
+    def parseVecs[T<:IOType](b: Vec[T], name: String = ""): Unit = {
       for ((e, i) <- b.zipWithIndex) {
         val new_name = name + s"($i)"
         port_to_name_accumulator(e) = new_name
@@ -75,6 +81,16 @@ class IOAccessor(val device_io: Bundle, verbose: Boolean = true) {
       }
     }
 
+//    def parseElements(elements: Seq[Element]): Unit = {
+//      for (e <- elements) {
+//        val new_name = e.name
+//        port_to_name_accumulator(e) = new_name
+//        add_to_ports_by_direction(e)
+//
+//        checkDecoupledOrValid(e, new_name)
+//      }
+//    }
+
     parseBundle(device_io)
     port_to_name_accumulator
   }
@@ -82,7 +98,7 @@ class IOAccessor(val device_io: Bundle, verbose: Boolean = true) {
 
   //noinspection ScalaStyle
   def showPorts(pattern : Regex): Unit = {
-    def orderPorts(a: Data, b: Data) : Boolean = {
+    def orderPorts(a: IOType, b: IOType) : Boolean = {
       port_to_name(a) < port_to_name(b)
     }
     def showDecoupledCode(port_name:String): String = {
@@ -113,10 +129,14 @@ class IOAccessor(val device_io: Bundle, verbose: Boolean = true) {
     println("-" * 80)
 
     for((port,index) <- port_to_name.keys.toList.sortWith(orderPorts).zipWithIndex) {
+      val dir = port match {
+        case e: Element => show_dir(e.dir)
+        case _ => "-"
+      }
       val port_name = port_to_name(port)
       println("%3d  %3s   %-4s%4s    %-25s %s".format(
         index,
-        show_dir(port.dir),
+        dir,
         showDecoupledCode(port_name),
         if(ports_referenced.contains(port)) "y" else "",
         port_name,
@@ -139,7 +159,7 @@ class IOAccessor(val device_io: Bundle, verbose: Boolean = true) {
     possible_parents.sorted.lastOption
   }
 
-  def contains(port: Data) : Boolean = {
+  def contains(port: IOType) : Boolean = {
     ports_referenced.contains(port)
   }
 }

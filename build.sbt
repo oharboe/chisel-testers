@@ -4,6 +4,8 @@ name := "Chisel.iotesters"
 
 scalaVersion := "2.11.7"
 
+javacOptions ++= Seq("-target", "1.7")
+
 // Provide a managed dependency on X if -DXVersion="" is supplied on the command line.
 // The following are the default development versions, not the "release" versions.
 val defaultVersions = Map(

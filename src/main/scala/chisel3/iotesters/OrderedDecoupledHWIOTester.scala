@@ -40,28 +40,28 @@ import scala.collection.mutable.ArrayBuffer
   * all outputs regardless of which interface are tested in the same order that they were created
   */
 abstract class OrderedDecoupledHWIOTester extends HWIOTester {
-  val input_event_list  = new ArrayBuffer[Seq[(Data, BigInt)]]()
-  val output_event_list = new ArrayBuffer[Seq[(Data, BigInt)]]()
+  val input_event_list  = new ArrayBuffer[Seq[(IOType, BigInt)]]()
+  val output_event_list = new ArrayBuffer[Seq[(IOType, BigInt)]]()
 
-  val port_to_decoupled = new mutable.HashMap[Data, DecoupledIO[Data]]
-  val port_to_valid     = new mutable.HashMap[Data, ValidIO[Data]]
+  val port_to_decoupled = new mutable.HashMap[IOType, DecoupledIO[IOType]]
+  val port_to_valid     = new mutable.HashMap[IOType, ValidIO[IOType]]
 
-  case class TestingEvent(port_values: Map[Data, BigInt], event_number: Int)
+  case class TestingEvent(port_values: Map[IOType, BigInt], event_number: Int)
 
-  val control_port_to_input_values  = new mutable.HashMap[DecoupledIO[Data], ArrayBuffer[TestingEvent]] {
-    override def default(key: DecoupledIO[Data]) = {
+  val control_port_to_input_values  = new mutable.HashMap[DecoupledIO[IOType], ArrayBuffer[TestingEvent]] {
+    override def default(key: DecoupledIO[IOType]) = {
       this(key) = new ArrayBuffer[TestingEvent]()
       this(key)
     }
   }
-  val decoupled_control_port_to_output_values = new mutable.HashMap[DecoupledIO[Data], ArrayBuffer[TestingEvent]] {
-    override def default(key: DecoupledIO[Data]) = {
+  val decoupled_control_port_to_output_values = new mutable.HashMap[DecoupledIO[IOType], ArrayBuffer[TestingEvent]] {
+    override def default(key: DecoupledIO[IOType]) = {
       this(key) = new ArrayBuffer[TestingEvent]()
       this(key)
     }
   }
-  val valid_control_port_to_output_values = new mutable.HashMap[ValidIO[Data], ArrayBuffer[TestingEvent]] {
-    override def default(key: ValidIO[Data]) = {
+  val valid_control_port_to_output_values = new mutable.HashMap[ValidIO[IOType], ArrayBuffer[TestingEvent]] {
+    override def default(key: ValidIO[IOType]) = {
       this(key) = new ArrayBuffer[TestingEvent]()
       this(key)
     }
@@ -72,10 +72,10 @@ abstract class OrderedDecoupledHWIOTester extends HWIOTester {
     * makes a list of all decoupled parents based on the ports referenced in pokes
     */
   def checkAndGetCommonDecoupledOrValidParentPort(
-                                                   pokes:             Seq[(Data, BigInt)],
+                                                   pokes:             Seq[(IOType, BigInt)],
                                                    must_be_decoupled: Boolean = true,
                                                    event_number:      Int
-                                                 ) : Either[DecoupledIO[Data],ValidIO[Data]] = {
+                                                 ) : Either[DecoupledIO[IOType],ValidIO[IOType]] = {
     val decoupled_parent_names = pokes.flatMap { case (port, value) =>
       Predef.assert(
         !io_info.port_to_name(port).endsWith(".valid"),
@@ -117,9 +117,9 @@ abstract class OrderedDecoupledHWIOTester extends HWIOTester {
     * makes a list of all decoupled parents based on the ports referenced in pokes
     */
   def getCommonValidParentPort(
-                                expects: Seq[(Data, BigInt)],
+                                expects: Seq[(IOType, BigInt)],
                                 event_number: Int
-                              ): Either[DecoupledIO[Data], ValidIO[Data]] = {
+                              ): Either[DecoupledIO[IOType], ValidIO[IOType]] = {
     val valid_parent_names = expects.flatMap { case (port, value) =>
       io_info.findParentValidPortName(io_info.port_to_name(port)) match {
         case None =>
@@ -140,11 +140,11 @@ abstract class OrderedDecoupledHWIOTester extends HWIOTester {
     Right(io_info.name_to_valid_port(valid_parent_names.head))
   }
 
-  def inputEvent(pokes: (Data, BigInt)*): Unit = {
+  def inputEvent(pokes: (IOType, BigInt)*): Unit = {
     input_event_list += pokes
   }
 
-  def outputEvent(expects: (Data, BigInt)*): Unit = {
+  def outputEvent(expects: (IOType, BigInt)*): Unit = {
     output_event_list += expects
   }
 
@@ -209,7 +209,7 @@ abstract class OrderedDecoupledHWIOTester extends HWIOTester {
     )
   }
 
-  private def name(port: Data): String = io_info.port_to_name(port)
+  private def name(port: IOType): String = io_info.port_to_name(port)
 
   /**
     * creates a Vec of Booleans that indicate if the io interface in question
@@ -235,8 +235,8 @@ abstract class OrderedDecoupledHWIOTester extends HWIOTester {
     * @param events  a set of events
     * @return
     */
-  private def portsReferencedByEvents(events: ArrayBuffer[TestingEvent]): mutable.HashSet[Data] = {
-    val ports_referenced = new mutable.HashSet[Data]()
+  private def portsReferencedByEvents(events: ArrayBuffer[TestingEvent]): mutable.HashSet[IOType] = {
+    val ports_referenced = new mutable.HashSet[IOType]()
     events.foreach { event =>
       event.port_values.foreach { case (port, value) => ports_referenced += port }
     }
@@ -244,10 +244,10 @@ abstract class OrderedDecoupledHWIOTester extends HWIOTester {
   }
 
   private def buildValuesVectorForEachPort(
-                                            io_interface     : Data,
-                                            referenced_ports : mutable.HashSet[Data],
+                                            io_interface     : IOType,
+                                            referenced_ports : mutable.HashSet[IOType],
                                             events           : ArrayBuffer[TestingEvent]
-                                          ): Map[Data, Vec[UInt]] = {
+                                          ): Map[IOType, Vec[UInt]] = {
     val port_vector_events = referenced_ports.map { port =>
       port -> Vec(events.map { event => UInt(event.port_values.getOrElse(port, BigInt(0))) } ++ List(UInt(0))) //0 added to end
     }.toMap
