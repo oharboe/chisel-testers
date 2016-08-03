@@ -2,8 +2,7 @@
 
 package examples
 
-import chisel3._
-import chisel3.util._
+import Chisel._
 import chisel3.iotesters.{SteppedHWIOTester, ChiselFlatSpec, OrderedDecoupledHWIOTester}
 
 object RealGCD {

@@ -2,10 +2,7 @@
 
 package chisel3.iotesters
 
-import chisel3._
-import chisel3.core.Element
-import chisel3.internal.firrtl.Port
-import chisel3.util._
+import Chisel._
 
 import scala.collection.mutable
 import scala.util.matching.Regex

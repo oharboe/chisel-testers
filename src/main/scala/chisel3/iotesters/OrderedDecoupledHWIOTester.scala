@@ -2,8 +2,7 @@
 
 package chisel3.iotesters
 
-import chisel3._
-import chisel3.util._
+import Chisel._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
