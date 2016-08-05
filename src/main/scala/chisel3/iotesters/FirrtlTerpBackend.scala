@@ -3,11 +3,11 @@ package chisel3.iotesters
 
 import java.io.File
 
-import chisel3.{Module, Bits}
+import chisel3.{Bits, Module}
 import chisel3.internal.HasId
+import chisel3.testers.{CircuitGraph, bigIntToStr, getDataNames}
 
 import scala.collection.mutable.HashMap
-
 import firrtl_interpreter.InterpretiveTester
 
 private[iotesters] class FirrtlTerpBackend(
@@ -84,9 +84,10 @@ private[iotesters] object setupFirrtlTerpBackend {
     val dir = new File(testDirPath)
     dir.mkdirs()
 
-    CircuitGraph.clear
+    val circuitGraph = new CircuitGraph
+    circuitGraph.clear
     val circuit = chisel3.Driver.elaborate(dutGen)
-    val dut = CircuitGraph construct circuit
+    val dut = circuitGraph construct circuit
 
     // Dump FIRRTL for debugging
     val firrtlIRFilePath = s"${testDirPath}/${circuit.name}.ir"

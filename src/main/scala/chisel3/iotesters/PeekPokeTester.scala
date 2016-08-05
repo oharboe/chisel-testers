@@ -3,6 +3,7 @@
 package chisel3.iotesters
 
 import chisel3._
+import chisel3.testers.TestApplicationException
 
 import scala.util.Random
 
@@ -60,9 +61,9 @@ abstract class PeekPokeTester[+T <: Module](
   })
   val backend = _backend getOrElse (
     if (chiselMain.context.isVCS)
-      new VCSBackend(dut, cmd, verbose, logger, _base, _seed, isPropagation)
+      new VCSBackend(chiselMain.context.circuitGraph, cmd, verbose, logger, _base, _seed, isPropagation)
     else
-      new VerilatorBackend(dut, cmd, verbose, logger, _base, _seed, isPropagation)
+      new VerilatorBackend(chiselMain.context.circuitGraph, cmd, verbose, logger, _base, _seed, isPropagation)
   )
 
   /********************************/

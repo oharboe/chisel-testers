@@ -3,11 +3,13 @@ package chisel3.iotesters
 
 import chisel3.internal.HasId
 
-import scala.collection.mutable.{ArrayBuffer, HashSet, HashMap, Queue => ScalaQueue}
+import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Queue => ScalaQueue}
 import scala.util.Random
-import java.io.{File, Writer, FileWriter, PrintStream, IOException}
+import java.io.{File, FileWriter, IOException, PrintStream, Writer}
 import java.nio.file.{FileAlreadyExistsException, Files, Paths}
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+
+import chisel3.testers.{CircuitGraph, bigIntToStr, getPorts, validName}
 
 /**
   * Copies the necessary header files used for verilator compilation to the specified destination folder
@@ -36,12 +38,13 @@ object copyVerilatorHeaderFiles {
 /**
   * Generates the Module specific verilator harness cpp file for verilator compilation
   */
-class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module, vcdFilePath: String) extends firrtl.Transform {
+class GenVerilatorCppHarness(writer: Writer, circuitGraph: CircuitGraph, vcdFilePath: String) extends firrtl.Transform {
   import firrtl._
   import firrtl.ir._
   import firrtl.Mappers._
   import firrtl.Annotations.AnnotationMap
 
+  val dut = circuitGraph.getModule
   def loweredName(e: Expression): String = e match {
     case e: WRef => e.name
     case e: WSubField => loweredName(e.exp) + "_" + e.name
@@ -103,8 +106,8 @@ class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module, vcdFilePath: St
   }
 
   private def findWidths(pathMap: Map[String, Set[String]])(m: DefModule) = {
-    val nodes = CircuitGraph.nodes filter { node =>
-      pathMap(m.name) contains (CircuitGraph getParentPathName (node, "."))
+    val nodes = circuitGraph.nodes filter { node =>
+      pathMap(m.name) contains (circuitGraph getParentPathName (node, "."))
     }
     val widthMap = HashMap[HasId, Int]()
 
@@ -130,19 +133,19 @@ class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module, vcdFilePath: St
       */
       case reg: DefRegister if reg.name.slice(0, 2) != "T_" && reg.name.slice(0, 4) != "GEN_" =>
         Utils.create_exps(reg.name, reg.tpe) map { exp =>
-          nodes filter (x => (CircuitGraph getName x) == validName(loweredName(exp))) foreach {
+          nodes filter (x => (circuitGraph getName x) == validName(loweredName(exp))) foreach {
             widthMap(_) = getWidth(Utils.tpe(exp))
           }
         }
         reg
       case prim: DefNode if prim.name.slice(0, 2) != "T_" && prim.name.slice(0, 4) != "GEN_" =>
-        nodes filter (x => (CircuitGraph getName x) == validName(prim.name)) foreach {
+        nodes filter (x => (circuitGraph getName x) == validName(prim.name)) foreach {
           widthMap(_) = getWidth(Utils.tpe(prim.value))
         }
         prim
       case mem: DefMemory if mem.name.slice(0, 2) != "T_" && mem.name.slice(0, 4) != "GEN_" => mem.dataType match {
         case _: UIntType | _: SIntType =>
-          nodes filter (x => (CircuitGraph getName x) == validName(mem.name)) foreach {
+          nodes filter (x => (circuitGraph getName x) == validName(mem.name)) foreach {
             widthMap(_) = getWidth(mem.dataType)
           }
           mem
@@ -202,16 +205,16 @@ class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module, vcdFilePath: St
     writer.write("        sim_data.outputs.clear();\n")
     writer.write("        sim_data.signals.clear();\n")
     inputs.toList foreach { node =>
-      val pathName = CircuitGraph getPathName (node, "->") replace (dutName, "dut") replace ("$", "__024")
+      val pathName = circuitGraph getPathName (node, "->") replace (dutName, "dut") replace ("$", "__024")
       pushBack("inputs", pathName, node.getWidth)
     }
     outputs.toList foreach { node =>
-      val pathName = CircuitGraph getPathName (node, "->") replace (dutName, "dut") replace ("$", "__024")  
+      val pathName = circuitGraph getPathName (node, "->") replace (dutName, "dut") replace ("$", "__024")
       pushBack("outputs", pathName, node.getWidth)
     }
-    (CircuitGraph.nodes foldLeft 0){ (id, node) =>
-      val pathName = CircuitGraph getPathName (node, "__DOT__") replace (dutName, "v") replace ("$", "__024")
-      val signalName = CircuitGraph getPathName (node, ".")
+    (circuitGraph.nodes foldLeft 0){ (id, node) =>
+      val pathName = circuitGraph getPathName (node, "__DOT__") replace (dutName, "v") replace ("$", "__024")
+      val signalName = circuitGraph getPathName (node, ".")
       try {
         node match {
           case mem: Chisel.MemBase[_] =>
@@ -331,12 +334,12 @@ class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module, vcdFilePath: St
 }
 
 class VerilatorCppHarnessCompiler(
-    dut: Chisel.Module, vcdFilePath: String) extends firrtl.Compiler {
+                                   circuitGraph: CircuitGraph, vcdFilePath: String) extends firrtl.Compiler {
   def transforms(w: Writer) = Seq(
     new firrtl.Chisel3ToHighFirrtl,
     new firrtl.IRToWorkingIR,
     new firrtl.ResolveAndCheck,
-    new GenVerilatorCppHarness(w, dut, vcdFilePath)
+    new GenVerilatorCppHarness(w, circuitGraph, vcdFilePath)
   )
 }
 
@@ -347,9 +350,9 @@ private[iotesters] object setupVerilatorBackend {
     val dir = new File(testDirPath)
     dir.mkdirs()
 
-    CircuitGraph.clear
+    val circuitGraph = new CircuitGraph
     val circuit = chisel3.Driver.elaborate(dutGen)
-    val dut = CircuitGraph construct circuit
+    val dut = circuitGraph construct circuit
 
     // Dump FIRRTL for debugging
     val firrtlIRFilePath = s"${testDirPath}/${circuit.name}.ir"
@@ -366,17 +369,17 @@ private[iotesters] object setupVerilatorBackend {
 
     // Generate Harness
     copyVerilatorHeaderFiles(testDirPath)
-    firrtl.Driver.compile(firrtlIRFilePath, cppHarnessFilePath, new VerilatorCppHarnessCompiler(dut, vcdFilePath))
+    firrtl.Driver.compile(firrtlIRFilePath, cppHarnessFilePath, new VerilatorCppHarnessCompiler(circuitGraph, vcdFilePath))
 
     chisel3.Driver.verilogToCpp(verilogFileName.split("\\.")(0), dut.name, new File(testDirPath), Seq(), new File(cppHarnessFileName)).!
     chisel3.Driver.cppToExe(verilogFileName.split("\\.")(0), new File(testDirPath)).!
 
-    new VerilatorBackend(dut, List(cppBinaryPath))
+    new VerilatorBackend(circuitGraph, List(cppBinaryPath))
   }
 }
 
 private[iotesters] class VerilatorBackend(
-                                          dut: Chisel.Module, 
+                                           circuitGraph: CircuitGraph,
                                           cmd: List[String],
                                           verbose: Boolean = true,
                                           logger: PrintStream = System.out,
@@ -384,17 +387,18 @@ private[iotesters] class VerilatorBackend(
                                           _seed: Long = System.currentTimeMillis,
                                           isPropagation: Boolean = true) extends Backend(_seed) {
 
-  val simApiInterface = new SimApiInterface(dut, cmd, logger, isPropagation)
+  val dut = circuitGraph.getModule
+  val simApiInterface = new SimApiInterface(circuitGraph, cmd, logger, isPropagation)
 
   def poke(signal: HasId, value: BigInt, off: Option[Int]) {
     val idx = off map (x => s"[$x]") getOrElse ""
-    val path = "%s%s".format(CircuitGraph getPathName (signal, "."), idx)
+    val path = "%s%s".format(circuitGraph getPathName (signal, "."), idx)
     poke(path, value)
   }
 
   def peek(signal: HasId, off: Option[Int]) = {
     val idx = off map (x => s"[$x]") getOrElse ""
-    val path = "%s%s".format(CircuitGraph getPathName (signal, "."), idx)
+    val path = "%s%s".format(circuitGraph getPathName (signal, "."), idx)
     peek(path)
   }
 
@@ -410,7 +414,7 @@ private[iotesters] class VerilatorBackend(
   }
 
   def expect(signal: HasId, expected: BigInt, msg: => String = "") = {
-    val name = CircuitGraph getPathName (signal, ".")
+    val name = circuitGraph getPathName (signal, ".")
     val got = simApiInterface.peek(name) getOrElse BigInt(rnd.nextInt)
     val good = got == expected
     if (verbose) logger println s"""${msg}  EXPECT ${name} -> ${bigIntToStr(got, _base)} == ${bigIntToStr(expected, _base)} ${if (good) "PASS" else "FAIL"}"""

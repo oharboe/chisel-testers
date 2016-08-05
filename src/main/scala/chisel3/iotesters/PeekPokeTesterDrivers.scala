@@ -3,6 +3,7 @@
 package chisel3.iotesters
 
 import chisel3._
+import chisel3.testers.CircuitGraph
 
 /**
   * Runs the ClassicTester and returns a Boolean indicating test success or failure
@@ -17,9 +18,9 @@ object runPeekPokeTester {
       case "vcs" => setupVCSBackend(dutGen)
       case _ => throw new Exception("Unrecongnized backend type $backendType")
     }
-    CircuitGraph.clear
+    val circuitGraph = new CircuitGraph
     val circuit = Driver.elaborate(dutGen)
-    val dut = (CircuitGraph construct circuit).asInstanceOf[T]
+    val dut = (circuitGraph construct circuit).asInstanceOf[T]
     testerGen(dut, Some(backend)).finish
   }
 }
@@ -31,10 +32,10 @@ object runPeekPokeTester {
 object runPeekPokeTesterWithVerilatorBinary {
   def apply[T <: Module] (dutGen: () => T, verilatorBinaryFilePath: String)
                          (testerGen: (T, Option[Backend]) => PeekPokeTester[T]): Boolean = {
-    CircuitGraph.clear
+    val circuitGraph = new CircuitGraph
     val circuit = Driver.elaborate(dutGen)
-    val dut = (CircuitGraph construct circuit).asInstanceOf[T]
-    val tester = testerGen(dut, Some(new VerilatorBackend(dut, List(verilatorBinaryFilePath))))
+    val dut = (circuitGraph construct circuit).asInstanceOf[T]
+    val tester = testerGen(dut, Some(new VerilatorBackend(circuitGraph, List(verilatorBinaryFilePath))))
     tester.finish
   }
 }

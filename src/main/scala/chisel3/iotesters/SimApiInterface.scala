@@ -12,13 +12,16 @@ import scala.concurrent.{Future, _}
 import scala.sys.process.{Process, ProcessLogger}
 import java.nio.channels.FileChannel
 
+import chisel3.testers.{CircuitGraph, TestApplicationException, getPorts}
+
 private[iotesters] class SimApiInterface(
-                                         dut: Module,
+                                          circuitGraph: CircuitGraph,
                                          cmd: List[String],
                                          logger: java.io.PrintStream,
                                          isPropagation: Boolean) {
+  val dut = circuitGraph.getModule
   val (inputsNameToChunkSizeMap, outputsNameToChunkSizeMap) = {
-    def genChunk(io: Data) = (CircuitGraph getPathName (io, ".")) -> ((io.getWidth-1)/64 + 1)
+    def genChunk(io: Data) = (circuitGraph getPathName (io, ".")) -> ((io.getWidth-1)/64 + 1)
     val (inputs, outputs) = getPorts(dut)
     (ListMap((inputs map genChunk): _*), ListMap((outputs map genChunk): _*))
   }

@@ -1,13 +1,13 @@
 // See LICENSE for license details.
 package chisel3.iotesters
 
-import chisel3.internal.HasId
+import chisel3._
 
-import scala.collection.mutable.HashMap
-import scala.util.Random
-import java.io.{File, Writer, FileWriter, PrintStream, IOException}
+import java.io.{File, FileWriter, IOException, PrintStream, Writer}
 import java.nio.file.{FileAlreadyExistsException, Files, Paths}
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+
+import chisel3.testers.{CircuitGraph, getDataNames}
 
 /**
   * Copies the necessary header files used for verilator compilation to the specified destination folder
@@ -121,9 +121,9 @@ private[iotesters] object setupVCSBackend {
     val dir = new File(testDirPath)
     dir.mkdirs()
 
-    CircuitGraph.clear
+    val circuitGraph = new CircuitGraph
     val circuit = chisel3.Driver.elaborate(dutGen)
-    val dut = CircuitGraph construct circuit
+    val dut = circuitGraph construct circuit
 
     // Dump FIRRTL for debugging
     val firrtlIRFilePath = s"${testDirPath}/${circuit.name}.ir"
@@ -141,18 +141,18 @@ private[iotesters] object setupVCSBackend {
     // Generate Harness
     copyVpiFiles(testDirPath)
     genVCSVerilogHarness(dut, new FileWriter(new File(vcsHarnessFilePath)), vpdFilePath)
-    verilogToVCS(dut.name, new File(testDirPath), new File(vcsHarnessFileName)).!
+    Driver.verilogToVCS(dut.name, new File(testDirPath), new File(vcsHarnessFileName)).!
 
-    new VCSBackend(dut, List(vcsBinaryPath))
+    new VCSBackend(circuitGraph, List(vcsBinaryPath))
   }
 }
 
 private[iotesters] class VCSBackend(
-                                    dut: chisel3.Module, 
+                                     circuitGraph: CircuitGraph,
                                     cmd: List[String],
                                     verbose: Boolean = true,
                                     logger: PrintStream = System.out,
                                     _base: Int = 16,
                                     _seed: Long = System.currentTimeMillis,
                                     isPropagation: Boolean = true) 
-           extends VerilatorBackend(dut, cmd, verbose, logger, _base, _seed, isPropagation)
+           extends VerilatorBackend(circuitGraph, cmd, verbose, logger, _base, _seed, isPropagation)

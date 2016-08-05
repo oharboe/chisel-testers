@@ -4,11 +4,13 @@ package chisel3.iotesters
 
 import chisel3._
 
-import scala.collection.mutable.{ArrayBuffer}
-import scala.util.{DynamicVariable}
+import scala.collection.mutable.ArrayBuffer
+import scala.util.DynamicVariable
 import scala.sys.process.Process
 import java.nio.file.{FileAlreadyExistsException, Files, Paths}
 import java.io.{File, FileWriter, IOException}
+
+import chisel3.testers.{CircuitGraph}
 
 private[iotesters] class TesterContext {
   var isVCS = false
@@ -23,6 +25,7 @@ private[iotesters] class TesterContext {
   var logFile: Option[String] = None
   var waveform: Option[String] = None
   val processes = ArrayBuffer[Process]()
+  var circuitGraph: CircuitGraph = new CircuitGraph()
 }
 
 object chiselMain {
@@ -53,12 +56,12 @@ object chiselMain {
     }
   }
 
-  private def genHarness[T <: Module](dut: Module,
+  private def genHarness[T <: Module](circuitGraph: CircuitGraph,
       firrtlIRFilePath: String, harnessFilePath:String, waveformPath: String) {
     if (context.isVCS) {
-      genVCSVerilogHarness(dut, new FileWriter(new File(harnessFilePath)), waveformPath)
+      genVCSVerilogHarness(circuitGraph.getModule, new FileWriter(new File(harnessFilePath)), waveformPath)
     } else {
-      firrtl.Driver.compile(firrtlIRFilePath, harnessFilePath, new VerilatorCppHarnessCompiler(dut, waveformPath))
+      firrtl.Driver.compile(firrtlIRFilePath, harnessFilePath, new VerilatorCppHarnessCompiler(circuitGraph, waveformPath))
     }
   }
 
@@ -69,7 +72,7 @@ object chiselMain {
       // Copy API files
       copyVpiFiles(s"${context.targetDir}")
       // Compile VCS
-      verilogToVCS(dutName, dir, new File(s"$dutName-harness.v")).!
+      Driver.verilogToVCS(dutName, dir, new File(s"$dutName-harness.v")).!
     } else {
       // Copy API files
       copyVerilatorHeaderFiles(s"${context.targetDir}")
@@ -82,7 +85,7 @@ object chiselMain {
 
   private def elaborate[T <: Module](args: Array[String], dutGen: () => T): T = {
     parseArgs(args)
-    CircuitGraph.clear
+    context.circuitGraph.clear
     try {
       Files.createDirectory(Paths.get(context.targetDir))
     } catch {
@@ -91,7 +94,7 @@ object chiselMain {
         System.err.format("createFile error: %s%n", x)
     }
     val circuit = Driver.elaborate(dutGen)
-    val dut = (CircuitGraph construct circuit).asInstanceOf[T]
+    val dut = (context.circuitGraph construct circuit).asInstanceOf[T]
     val dir = new File(context.targetDir)
 
     val firrtlIRFilePath = s"${dir}/${circuit.name}.ir"
@@ -104,7 +107,7 @@ object chiselMain {
     val pathPrefix = s"${chiselMain.context.targetDir}/${circuit.name}"
     val harnessFilePath = s"$pathPrefix-harness.%s".format(if (context.isVCS) "v" else "cpp")
     val waveformFilePath = s"$pathPrefix.%s".format(if (context.isVCS) "vpd" else "vcd")
-    if (context.isGenHarness) genHarness(dut, firrtlIRFilePath, harnessFilePath, waveformFilePath)
+    if (context.isGenHarness) genHarness(context.circuitGraph, firrtlIRFilePath, harnessFilePath, waveformFilePath)
 
     if (context.isCompiling) compile(circuit.name)
 
