@@ -18,6 +18,9 @@ trait AdvTests extends PeekPokeTests {
   def until(pred: =>Boolean, maxCycles: Long = 0L)(work: =>Unit): Boolean
   def eventually(pred: =>Boolean, maxCycles: Long = 0L): Boolean
   def do_until(work: =>Unit)(pred: =>Boolean, maxCycles: Long = 0L): Boolean
+  def until(n: Int)(pred: =>Boolean, maxCycles: Long)(work: =>Unit): Boolean
+  def eventually(n: Int)(pred: =>Boolean, maxCycles: Long): Boolean
+  def do_until(n: Int)(work: =>Unit)(pred: =>Boolean, maxCycles: Long): Boolean
 }
 
 abstract class AdvTester[+T <: Module](dut: T,
@@ -58,9 +61,10 @@ abstract class AdvTester[+T <: Module](dut: T,
   def reg_poke(port: Bits, target: BigInt) { registered_bits_updates(port) = target }
 
   // This function replaces step in the advanced tester and makes sure all tester features are clocked in the appropriate order
-  def takestep(work: => Unit = {}): Unit = {
+  def takesteps(n: Int)(work: => Unit = {}): Unit = {
+    require(n > 0, "Number of steps taken must be positive integer.")
     try {
-      step(1)
+      step(n)
       do_registered_updates()
       preprocessors.foreach(_.process()) // e.g. sinks
       work
@@ -76,26 +80,30 @@ abstract class AdvTester[+T <: Module](dut: T,
         assert(false, e.toString)
     }
   }
-  def takesteps(n: Int)(work: =>Unit = {}): Unit = {
-    require(n > 0, "Number of steps taken must be positive integer.")
-    (0 until n).foreach(_ => takestep(work))
-  }
+  def takestep(work: =>Unit = {}): Unit = takesteps(1)(work)
 
   // Functions to step depending on predicates
-  def until(pred: =>Boolean, maxCycles: Long = defaultMaxCycles)(work: =>Unit): Boolean = {
+  def until(pred: =>Boolean, maxcycles: Long = defaultMaxCycles)(work: =>Unit): Boolean =
+    until(1)(pred, maxcycles)(work)
+  def until(n: Int)(pred: =>Boolean, maxCycles: Long)(work: =>Unit): Boolean = {
     var timeout_cycles = 0L
     while(!pred && (timeout_cycles < maxCycles)) {
-      takestep(work)
+      takesteps(n)(work)
       timeout_cycles += 1
     }
     assert(timeout_cycles < maxCycles,
       "until timed out after %d cycles".format(timeout_cycles))
     pred
   }
-  def eventually(pred: =>Boolean, maxCycles: Long = defaultMaxCycles) = {until(pred, maxCycles){}}
-  def do_until(work: =>Unit)(pred: =>Boolean, maxCycles: Long = defaultMaxCycles): Boolean = {
-    takestep(work)
-    until(pred, maxCycles){work}
+  def eventually(pred: =>Boolean, maxCycles: Long = defaultMaxCycles): Boolean =
+    until(1)(pred, maxCycles){}
+  def eventually(n: Int)(pred: =>Boolean, maxCycles: Long): Boolean =
+    until(n)(pred, maxCycles){}
+  def do_until(work: =>Unit)(pred: =>Boolean, maxCycles: Long = defaultMaxCycles): Boolean =
+    do_until(1)(work)(pred, maxCycles)
+  def do_until(n: Int)(work: =>Unit)(pred: =>Boolean, maxCycles: Long): Boolean = {
+    takesteps(n)(work)
+    until(n)(pred, maxCycles){work}
   }
 
   def assert(expr: Boolean, errMsg:String = "") = {
