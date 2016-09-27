@@ -129,6 +129,7 @@ class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module,
     outputs.toList foreach { case (node, name) =>
       pushBack("outputs", name replace (dutName, "dut"), node.getWidth)
     }
+    /*
     pushBack("signals", "dut->reset", 1)
     writer.write(s"""        sim_data.signal_map["%s"] = 0;\n""".format(dut.reset.pathName))
     (nodes foldLeft 1){ (id, node) =>
@@ -156,6 +157,7 @@ class GenVerilatorCppHarness(writer: Writer, dut: Chisel.Module,
           throw e
       }
     }
+    */
     writer.write("    }\n")
     writer.write("#if VM_TRACE\n")
     writer.write("     void init_dump(VerilatedVcdC* _tfp) { tfp = _tfp; }\n")
