@@ -11,12 +11,11 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
   * Copies the necessary header files used for verilator compilation to the specified destination folder
   */
 object copyVpiFiles {
-  def apply(destinationDirPath: String): Unit = {
-    new File(destinationDirPath).mkdirs()
-    val simApiHFilePath = Paths.get(destinationDirPath + "/sim_api.h")
-    val vpiHFilePath = Paths.get(destinationDirPath + "/vpi.h")
-    val vpiCppFilePath = Paths.get(destinationDirPath + "/vpi.cpp")
-    val vpiTabFilePath = Paths.get(destinationDirPath + "/vpi.tab")
+  def apply(destinationDir: File): Unit = {
+    val simApiHFilePath = Paths.get(s"$destinationDir/sim_api.h")
+    val vpiHFilePath = Paths.get(s"$destinationDir/vpi.h")
+    val vpiCppFilePath = Paths.get(s"$destinationDir/vpi.cpp")
+    val vpiTabFilePath = Paths.get(s"$destinationDir/vpi.tab")
     try {
       Files.createFile(simApiHFilePath)
       Files.createFile(vpiHFilePath)
@@ -119,10 +118,11 @@ object genVCSVerilogHarness {
 }
 
 private[iotesters] object setupVCSBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T, debug: Boolean): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T, dir: File, debug: Boolean): (T, Backend) = {
+    dir.mkdirs
+
     val circuit = chisel3.Driver.elaborate(dutGen)
     val dut = getTopModule(circuit).asInstanceOf[T]
-    val dir = new File(s"test_run_dir/${dut.getClass.getName}") ; dir.mkdirs()
 
     // Generate CHIRRTL
     val chirrtl = firrtl.Parser.parse(chisel3.Driver.emit(dutGen))
@@ -139,7 +139,7 @@ private[iotesters] object setupVCSBackend {
     val vcsHarnessFileName = s"${circuit.name}-harness.v"
     val vcsHarnessFile = new File(dir, vcsHarnessFileName)
     val vpdFile = new File(dir, s"${circuit.name}.vpd")
-    copyVpiFiles(dir.toString)
+    copyVpiFiles(dir)
     genVCSVerilogHarness(dut, new FileWriter(vcsHarnessFile), vpdFile.toString)
     verilogToVCS(circuit.name, dir, new File(vcsHarnessFileName), debug).!
 

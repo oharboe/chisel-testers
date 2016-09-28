@@ -1,6 +1,7 @@
 package Chisel
 
 import chisel3.{ iotesters => ciot }
+import chisel3.Driver.createTempDirectory
 import java.io.File
 
 /**
@@ -28,15 +29,17 @@ package object iotesters {
       */
     def apply[T <: Module](dutGen: () => T,
                            backendType: String = "firrtl",
+                           dir: File = createTempDirectory("iotesters"),
                            debug: Boolean = false)
                           (testerGen: T => ciot.PeekPokeTester[T]): Boolean = {
-      ciot.Driver(dutGen, backendType, debug)(testerGen)
+      ciot.Driver(dutGen, backendType, dir, debug)(testerGen)
     }
 
     def compile[T <: Module](dutGen: () => T,
                              backendType: String = "verilator",
+                             dir: File = createTempDirectory("iotesters"),
                              debug: Boolean = false): T = {
-      ciot.Driver.compile(dutGen, backendType, debug)
+      ciot.Driver.compile(dutGen, backendType, dir, debug)
     }
 
     /**

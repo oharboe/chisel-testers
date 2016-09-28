@@ -12,10 +12,9 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
   * Copies the necessary header files used for verilator compilation to the specified destination folder
   */
 object copyVerilatorHeaderFiles {
-  def apply(destinationDirPath: String): Unit = {
-    new File(destinationDirPath).mkdirs()
-    val simApiHFilePath = Paths.get(destinationDirPath + "/sim_api.h")
-    val verilatorApiHFilePath = Paths.get(destinationDirPath + "/veri_api.h")
+  def apply(destinationDir: File): Unit = {
+    val simApiHFilePath = Paths.get(s"$destinationDir/sim_api.h")
+    val verilatorApiHFilePath = Paths.get(s"$destinationDir/veri_api.h")
     try {
       Files.createFile(simApiHFilePath)
       Files.createFile(verilatorApiHFilePath)
@@ -265,13 +264,13 @@ class VerilatorCppHarnessCompiler(dut: Chisel.Module,
 }
 
 private[iotesters] object setupVerilatorBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T, debug: Boolean): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T, dir: File, debug: Boolean): (T, Backend) = {
+    dir.mkdirs
     // Generate CHIRRTL
     val circuit = chisel3.Driver.elaborate(dutGen)
     val chirrtl = firrtl.Parser.parse(chisel3.Driver.emit(circuit))
     val dut = getTopModule(circuit).asInstanceOf[T]
     val nodes = getChiselNodes(circuit)
-    val dir = new File(s"test_run_dir/${dut.getClass.getName}"); dir.mkdirs()
 
     // Generate Verilog
     val verilogFile = new File(dir, s"${circuit.name}.v")
@@ -286,7 +285,7 @@ private[iotesters] object setupVerilatorBackend {
     val cppHarnessWriter = new FileWriter(cppHarnessFile)
     val vcdFile = new File(dir, s"${circuit.name}.vcd")
     val harnessCompiler = new VerilatorCppHarnessCompiler(dut, nodes, vcdFile.toString)
-    copyVerilatorHeaderFiles(dir.toString)
+    copyVerilatorHeaderFiles(dir)
     harnessCompiler.compile(chirrtl, annotation, cppHarnessWriter)
     cppHarnessWriter.close
     verilogToCpp(circuit.name, circuit.name, dir, Seq(), new File(cppHarnessFileName), debug).!

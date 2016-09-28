@@ -3,6 +3,7 @@
 package chisel3.iotesters
 
 import chisel3.Module
+import chisel3.Driver.createTempDirectory
 import scala.util.DynamicVariable
 import java.io.File
 
@@ -17,12 +18,13 @@ object Driver {
     */
   def apply[T <: Module](dutGen: () => T,
                          backendType: String = "firrtl",
+                         dir: File = createTempDirectory("iotesters"),
                          debug: Boolean = false)
                          (testerGen: T => PeekPokeTester[T]): Boolean = {
     val (dut, backend) = backendType match {
-      case "firrtl" => setupFirrtlTerpBackend(dutGen)
-      case "verilator" => setupVerilatorBackend(dutGen, debug)
-      case "vcs" => setupVCSBackend(dutGen, debug)
+      case "firrtl" => setupFirrtlTerpBackend(dutGen) // TODO: support dir & debug?
+      case "verilator" => setupVerilatorBackend(dutGen, dir, debug)
+      case "vcs" => setupVCSBackend(dutGen, dir, debug)
       case _ => throw new Exception("Unrecongnized backend type $backendType")
     }
     backendVar.withValue(Some(backend)) {
@@ -38,11 +40,12 @@ object Driver {
 
   def compile[T <: Module](dutGen: () => T,
                            backendType: String = "firrtl",
+                           dir: File = createTempDirectory("iotesters"),
                            debug: Boolean = false): T = {
     val (dut, _) = backendType match {
-      case "firrtl" => setupFirrtlTerpBackend(dutGen)
-      case "verilator" => setupVerilatorBackend(dutGen, debug)
-      case "vcs" => setupVCSBackend(dutGen, debug)
+      case "firrtl" => setupFirrtlTerpBackend(dutGen) // TODO: suport debug & dir?
+      case "verilator" => setupVerilatorBackend(dutGen, dir, debug)
+      case "vcs" => setupVCSBackend(dutGen, dir, debug)
       case _ => throw new Exception("Unrecongnized backend type $backendType")
     }
     dut

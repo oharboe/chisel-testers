@@ -9,6 +9,7 @@ import scala.util.{DynamicVariable}
 import java.nio.file.{FileAlreadyExistsException, Files, Paths}
 import java.io.{File, FileWriter, IOException}
 
+
 private[iotesters] class TesterContext {
   var isGenVerilog = false
   var isGenHarness = false
@@ -19,7 +20,7 @@ private[iotesters] class TesterContext {
   var testerSeed = System.currentTimeMillis
   val testCmd = ArrayBuffer[String]()
   var backend = "verilator"
-  var targetDir = new File("test_run_dir")
+  var targetDir = chisel3.Driver.createTempDirectory("iotesters")
   var logFile: Option[File] = None
   var waveform: Option[File] = None
 }
@@ -73,14 +74,14 @@ object chiselMain {
       case "firrtl" => // skip
       case "verilator" =>
         // Copy API files
-        copyVerilatorHeaderFiles(context.targetDir.toString)
+        copyVerilatorHeaderFiles(context.targetDir)
         // Generate Verilator
         verilogToCpp(dutName, dutName, dir, Seq(), new File(s"$dutName-harness.cpp"), debug).!
         // Compile Verilator
         chisel3.Driver.cppToExe(dutName, dir).!
       case "vcs" | "glsim" =>
         // Copy API files
-        copyVpiFiles(context.targetDir.toString)
+        copyVpiFiles(context.targetDir)
         // Compile VCS
         verilogToVCS(dutName, dir, new File(s"$dutName-harness.v"), debug).!
       case b => throw BackendException(b)
