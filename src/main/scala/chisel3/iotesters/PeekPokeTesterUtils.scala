@@ -7,6 +7,7 @@ import chisel3.internal.InstanceId
 import chisel3.internal.firrtl.Circuit
 import scala.sys.process._
 import scala.collection.mutable.{ArrayBuffer, HashMap}
+import java.io.File
 
 // TODO: FIRRTL will eventually return valid names
 private[iotesters] object validName {
@@ -73,11 +74,41 @@ private[iotesters] object bigIntToStr {
   }
 }
 
+private[iotesters] object verilogToCpp {
+  def apply(
+      dutFile: String,
+      topModule: String,
+      dir: File,
+      vSources: Seq[File],
+      cppHarness: File,
+      debug: Boolean
+                  ): ProcessBuilder = {
+    val command = Seq("verilator", "--cc", s"$dutFile.v") ++
+      vSources.map(file => Seq("-v", file.toString)).flatten ++
+      Seq("--assert",
+        "-Wno-fatal",
+        "-Wno-WIDTH",
+        "-Wno-STMTDLY") ++
+      (if (debug) Seq("--trace") else Nil) ++
+      Seq("-O2",
+        "--top-module", topModule,
+        s"+define+PRINTF_COND=!$topModule.reset",
+        s"+define+STOP_COND=!$topModule.reset",
+        "-CFLAGS",
+        s"""-Wno-undefined-bool-conversion -O2 -DTOP_TYPE=V$dutFile -include V$dutFile.h""",
+        "-Mdir", dir.toString,
+        "--exe", cppHarness.toString)
+    System.out.println(s"${command.mkString(" ")}") // scalastyle:ignore regex
+    command
+  }
+}
+
 private[iotesters] object verilogToVCS {
   def apply(
     topModule: String,
-    dir: java.io.File,
-    vcsHarness: java.io.File
+    dir: File,
+    vcsHarness: File,
+    debug: Boolean
                 ): ProcessBuilder = {
     val ccFlags = Seq("-I$VCS_HOME/include", "-I$dir", "-fPIC", "-std=c++11")
     val vcsFlags = Seq("-full64",
@@ -88,8 +119,9 @@ private[iotesters] object verilogToVCS {
       "+v2k", "+vpi",
       "+vcs+lic+wait",
       "+vcs+initreg+random",
-      "+define+CLOCK_PERIOD=1",
-      "-P", "vpi.tab",
+      "+define+CLOCK_PERIOD=1") ++
+    (if (debug) Seq("+define+DEBUG") else Nil) ++
+    Seq("-P", "vpi.tab",
       "-cpp", "g++", "-O2", "-LDFLAGS", "-lstdc++",
       "-CFLAGS", "\"%s\"".format(ccFlags mkString " "))
     val cmd = Seq("cd", dir.toString, "&&", "vcs") ++ vcsFlags ++ Seq(

@@ -265,7 +265,7 @@ class VerilatorCppHarnessCompiler(dut: Chisel.Module,
 }
 
 private[iotesters] object setupVerilatorBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T, debug: Boolean): (T, Backend) = {
     // Generate CHIRRTL
     val circuit = chisel3.Driver.elaborate(dutGen)
     val chirrtl = firrtl.Parser.parse(chisel3.Driver.emit(circuit))
@@ -289,7 +289,7 @@ private[iotesters] object setupVerilatorBackend {
     copyVerilatorHeaderFiles(dir.toString)
     harnessCompiler.compile(chirrtl, annotation, cppHarnessWriter)
     cppHarnessWriter.close
-    chisel3.Driver.verilogToCpp(circuit.name, circuit.name, dir, Seq(), new File(cppHarnessFileName)).!
+    verilogToCpp(circuit.name, circuit.name, dir, Seq(), new File(cppHarnessFileName), debug).!
     chisel3.Driver.cppToExe(circuit.name, dir).!
 
     (dut, new VerilatorBackend(dut, Seq((new File(dir, s"V${circuit.name}")).toString)))

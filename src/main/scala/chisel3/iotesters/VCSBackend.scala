@@ -78,6 +78,7 @@ object genVCSVerilogHarness {
     writer write "    $init_outs(%s);\n".format(outputs.unzip._2 mkString ", ")
     writer write "    $init_sigs(%s);\n".format(dutName)
     writer write "    /*** VCD & VPD dump ***/\n"
+    writer write "`ifdef DEBUG\n"
     writer write "    if ($value$plusargs(\"vcdfile=%s\", vcdfile)) begin\n"
     writer write "      $dumpfile(vcdfile);\n"
     writer write "      $dumpvars(0, %s);\n".format(dutName)
@@ -93,10 +94,11 @@ object genVCSVerilogHarness {
     writer write "      $vcdplusmemon;\n"
     writer write "    end\n"
     writer write "    $vcdpluson(0);\n"
-    writer write "    $vcdplusautoflushon;\n"
+    writer write "`endif\n"
     writer write "  end\n\n"
 
     writer write "  always @(%s clock) begin\n".format(if (isGateLevel) "posedge" else "negedge")
+    writer write "`ifdef DEBUG\n"
     writer write "    if (vcdfile && reset) begin\n"
     writer write "      $dumpoff;\n"
     writer write "      vcdon = 0;\n"
@@ -105,7 +107,11 @@ object genVCSVerilogHarness {
     writer write "      $dumpon;\n"
     writer write "      vcdon = 1;\n"
     writer write "    end\n"
+    writer write "`endif\n"
     writer write "    %s $tick();\n".format(if (isGateLevel) "#0.05" else "")
+    writer write "`ifdef DEBUG\n"
+    writer write "    $vcdplusautoflushon;\n"
+    writer write "`endif\n"
     writer write "  end\n\n"
     writer write "endmodule\n"
     writer.close
@@ -113,7 +119,7 @@ object genVCSVerilogHarness {
 }
 
 private[iotesters] object setupVCSBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T, debug: Boolean): (T, Backend) = {
     val circuit = chisel3.Driver.elaborate(dutGen)
     val dut = getTopModule(circuit).asInstanceOf[T]
     val dir = new File(s"test_run_dir/${dut.getClass.getName}") ; dir.mkdirs()
@@ -135,7 +141,7 @@ private[iotesters] object setupVCSBackend {
     val vpdFile = new File(dir, s"${circuit.name}.vpd")
     copyVpiFiles(dir.toString)
     genVCSVerilogHarness(dut, new FileWriter(vcsHarnessFile), vpdFile.toString)
-    verilogToVCS(circuit.name, dir, new File(vcsHarnessFileName)).!
+    verilogToVCS(circuit.name, dir, new File(vcsHarnessFileName), debug).!
 
     (dut, new VCSBackend(dut, Seq((new File(dir, circuit.name)).toString)))
   }

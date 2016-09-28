@@ -14,6 +14,8 @@ private[iotesters] class TesterContext {
   var isGenHarness = false
   var isCompiling = false
   var isRunTest = false
+  var isDebug = false
+  var isVpdMem = false
   var testerSeed = System.currentTimeMillis
   val testCmd = ArrayBuffer[String]()
   var backend = "verilator"
@@ -36,11 +38,13 @@ object chiselMain {
     case "--genHarness" :: tail => context.isGenHarness = true ; parseArgs(tail)
     case "--compile" :: tail => context.isCompiling = true ; parseArgs(tail)
     case "--test" :: tail => context.isRunTest = true ; parseArgs(tail)
+    case "--debug" :: tail => context.isDebug = true ; parseArgs(tail)
     case "--testCommand" :: value :: tail => context.testCmd ++= value split ' ' ; parseArgs(tail)
     case "--testerSeed" :: value :: tail => context.testerSeed = value.toLong ; parseArgs(tail)
     case "--targetDir" :: value :: tail => context.targetDir = new File(value) ; parseArgs(tail)
     case "--logFile" :: value :: tail => context.logFile = Some(new File(value)) ; parseArgs(tail)
     case "--waveform" :: value :: tail => context.waveform = Some(new File(value)) ; parseArgs(tail)
+    case "--vpdmem" :: tail => context.isVpdMem = true ; parseArgs(tail)
     case flag :: tail => parseArgs(tail) // skip unknown flag
     case Nil => // finish
   }
@@ -63,7 +67,7 @@ object chiselMain {
     }
   }
 
-  private def compile(dutName: String) {
+  private def compile(dutName: String, debug: Boolean) {
     val dir = context.targetDir
     context.backend match {
       case "firrtl" => // skip
@@ -71,14 +75,14 @@ object chiselMain {
         // Copy API files
         copyVerilatorHeaderFiles(context.targetDir.toString)
         // Generate Verilator
-        chisel3.Driver.verilogToCpp(dutName, dutName, dir, Seq(), new File(s"$dutName-harness.cpp")).!
+        verilogToCpp(dutName, dutName, dir, Seq(), new File(s"$dutName-harness.cpp"), debug).!
         // Compile Verilator
         chisel3.Driver.cppToExe(dutName, dir).!
       case "vcs" | "glsim" =>
         // Copy API files
         copyVpiFiles(context.targetDir.toString)
         // Compile VCS
-        verilogToVCS(dutName, dir, new File(s"$dutName-harness.v")).!
+        verilogToVCS(dutName, dir, new File(s"$dutName-harness.v"), debug).!
       case b => throw BackendException(b)
     }
   }
@@ -115,7 +119,7 @@ object chiselMain {
 
     if (context.isGenHarness) genHarness(dut, nodes, chirrtl)
 
-    if (context.isCompiling) compile(name)
+    if (context.isCompiling) compile(name, context.isDebug)
 
     if (context.testCmd.isEmpty) {
       context.backend match {
@@ -131,6 +135,7 @@ object chiselMain {
       case None =>
       case Some(f) => context.testCmd += s"+waveform=$f"
     }
+    if (context.isVpdMem) context.testCmd += "+vpdmem"
     dut
   }
 
