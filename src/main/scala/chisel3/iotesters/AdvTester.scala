@@ -22,9 +22,8 @@ trait AdvTests extends PeekPokeTests {
 
 abstract class AdvTester[+T <: Module](dut: T,
                                        verbose: Boolean = false,
-                                       base: Int = 16,
-                                       logFile: Option[java.io.File] = chiselMain.context.logFile)
-                extends PeekPokeTester(dut, verbose, base, logFile) {
+                                       base: Int = 16)
+                extends PeekPokeTester(dut, verbose, base) {
   val defaultMaxCycles = 1024L
   var _cycles = 0L
   def cycles = _cycles

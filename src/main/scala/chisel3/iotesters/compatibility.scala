@@ -30,9 +30,12 @@ package object iotesters {
     def apply[T <: Module](dutGen: () => T,
                            backendType: String = "firrtl",
                            dir: File = createTempDirectory("iotesters"),
-                           debug: Boolean = false)
+                           debug: Boolean = false,
+                           logFile: Option[File] = None,
+                           waveform: Option[File] = None,
+                           vpdmem: Boolean = false)
                           (testerGen: T => ciot.PeekPokeTester[T]): Boolean = {
-      ciot.Driver(dutGen, backendType, dir, debug)(testerGen)
+      ciot.Driver(dutGen, backendType, dir, debug, logFile, waveform, vpdmem)(testerGen)
     }
 
     def compile[T <: Module](dutGen: () => T,
@@ -50,19 +53,21 @@ package object iotesters {
                          binary: String,
                          args: String*)
                         (testerGen: T => ciot.PeekPokeTester[T]): Boolean = {
-      ciot.Driver.run(dutGen, binary +: args.toSeq)(testerGen)
+      ciot.Driver.run(dutGen, binary +: args.toSeq, None)(testerGen)
     }
     def run[T <: Module](dutGen: () => T,
                          binary: File,
+                         logFile: Option[File] = None,
                          waveform: Option[File] = None,
                          vpdmem: Boolean = false)
                         (testerGen: T => ciot.PeekPokeTester[T]): Boolean = {
-      ciot.Driver.run(dutGen, binary, waveform)(testerGen)
+      ciot.Driver.run(dutGen, binary, logFile, waveform, vpdmem)(testerGen)
     }
     def run[T <: Module](dutGen: () => T, 
-                         cmd: Seq[String])
+                         cmd: Seq[String],
+                         logFile: Option[File])
                         (testerGen: T => ciot.PeekPokeTester[T]): Boolean = {
-      ciot.Driver.run(dutGen, cmd)(testerGen)
+      ciot.Driver.run(dutGen, cmd, logFile)(testerGen)
     }
   }
 }

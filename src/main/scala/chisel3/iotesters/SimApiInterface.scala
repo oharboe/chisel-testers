@@ -13,7 +13,7 @@ import scala.sys.process.{Process, ProcessLogger}
 import java.io.{File, PrintStream}
 import java.nio.channels.FileChannel
 
-private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
+private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String], logger: PrintStream) {
   val (inputsNameToChunkSizeMap, outputsNameToChunkSizeMap) = {
     val (inputs, outputs) = getPorts(dut)
     def genChunk(args: (Data, String)) = args match {
@@ -33,7 +33,7 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
   private val _chunks = HashMap[String, Int]()
   private val _logs = ArrayBuffer[String]()
 
-  private def dumpLogs(implicit logger: PrintStream) {
+  private def dumpLogs(logger: PrintStream) {
     _logs foreach logger.println
     _logs.clear
   }
@@ -155,11 +155,11 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
     isStale = false
   }
 
-  private def takeStep(implicit logger: PrintStream) {
+  private def takeStep {
     mwhile(!sendCmd(SIM_CMD.STEP)) { }
     mwhile(!sendInputs) { }
     mwhile(!recvOutputs) { }
-    dumpLogs
+    dumpLogs(logger)
   }
 
   private def getId(path: String) = {
@@ -212,7 +212,6 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
   }
 
   private def start {
-    implicit val logger = System.out // Start dumps to screen
     println(s"""STARTING ${cmd mkString " "}""")
     mwhile(!recvOutputs) { }
     // reset(5)
@@ -222,7 +221,7 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
     }
   }
 
-  def poke(signal: String, value: BigInt)(implicit logger: PrintStream) {
+  def poke(signal: String, value: BigInt) {
     if (inputsNameToChunkSizeMap contains signal) {
       _pokeMap(signal) = value
       isStale = true
@@ -237,7 +236,7 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
     }
   }
 
-  def peek(signal: String)(implicit logger: PrintStream): Option[BigInt] = {
+  def peek(signal: String): Option[BigInt] = {
     if (isStale) update
     if (outputsNameToChunkSizeMap contains signal) _peekMap get signal
     else if (inputsNameToChunkSizeMap contains signal) _pokeMap get signal
@@ -252,7 +251,7 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
     }
   }
 
-  def step(n: Int)(implicit logger: PrintStream) {
+  def step(n: Int) {
     update
     (0 until n) foreach (_ => takeStep)
   }
@@ -264,10 +263,10 @@ private[iotesters] class SimApiInterface(dut: Module, cmd: Seq[String]) {
     }
   }
 
-  def finish(implicit logger: PrintStream) {
+  def finish {
     mwhile(!sendCmd(SIM_CMD.FIN)) { }
     while(!exitValue.isCompleted) { }
-    dumpLogs
+    dumpLogs(logger)
     inChannel.close
     outChannel.close
     cmdChannel.close

@@ -29,40 +29,40 @@ trait PeekPokeTests {
 abstract class PeekPokeTester[+T <: Module](val dut: T,
                                             verbose: Boolean = true,
                                             base: Int = 16,
-                                            logFile: Option[java.io.File] = None,
                                             _seed: Long = chiselMain.context.testerSeed) {
-
-  implicit def longToInt(x: Long) = x.toInt
-
-  implicit val logger = (logFile, chiselMain.context.logFile) match {
-    case (None, None) => System.out
-    case (Some(f), _) => new java.io.PrintStream(f)
-    case (_, Some(f)) => new java.io.PrintStream(f)
-  }
-  implicit val _verbose = verbose
-  implicit val _base = base
-
-  def println(msg: String = "") {
-    logger println msg
-  }
 
   /****************************/
   /*** Simulation Interface ***/
   /****************************/
-  logger println s"SEED ${_seed}"
   val backend = Driver.backend getOrElse {
     val cmd = chiselMain.context.testCmd.toList
+    val logger = chiselMain.context.logFile match {
+      case None => System.out
+      case Some(f) => new java.io.PrintStream(f)
+    }
     chiselMain.context.backend match {
       case "firrtl" =>
         val file = new java.io.File(chiselMain.context.targetDir, s"${dut.name}.ir")
         val ir = io.Source.fromFile(file).getLines mkString "\n"
-        new FirrtlTerpBackend(dut, ir, _seed)
+        new FirrtlTerpBackend(dut, ir, logger, _seed)
       case "verilator" =>
-        new VerilatorBackend(dut, cmd, _seed)
+        new VerilatorBackend(dut, cmd, logger, _seed)
       case "vcs" | "glsim" =>
-        new VCSBackend(dut, cmd, _seed)
+        new VCSBackend(dut, cmd, logger, _seed)
       case b => throw BackendException(b)
     }
+  }
+
+  implicit def longToInt(x: Long) = x.toInt
+
+  implicit val logger = backend.logger
+  implicit val _verbose = verbose
+  implicit val _base = base
+
+  logger println s"SEED ${_seed}"
+
+  def println(msg: String = "") {
+    logger println msg
   }
 
   /********************************/

@@ -118,7 +118,12 @@ object genVCSVerilogHarness {
 }
 
 private[iotesters] object setupVCSBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T, dir: File, debug: Boolean): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T,
+                                 dir: File,
+                                 debug: Boolean,
+                                 logFile: Option[File],
+                                 waveform: Option[File],
+                                 vpdmem: Boolean): (T, Backend) = {
     dir.mkdirs
 
     val circuit = chisel3.Driver.elaborate(dutGen)
@@ -143,11 +148,23 @@ private[iotesters] object setupVCSBackend {
     genVCSVerilogHarness(dut, new FileWriter(vcsHarnessFile), vpdFile.toString)
     verilogToVCS(circuit.name, dir, new File(vcsHarnessFileName), debug).!
 
-    (dut, new VCSBackend(dut, Seq((new File(dir, circuit.name)).toString)))
+    val bin = new File(dir, circuit.name)
+    val cmd = (waveform, vpdmem) match {
+      case (None, false) => Seq(bin.toString)
+      case (None, true) => Seq(bin.toString, "+vpdmem")
+      case (Some(f), false) => Seq(bin.toString, s"+waveform=$f")
+      case (Some(f), true) => Seq(bin.toString, s"+waveform=$f", "+vpdmem")
+    }
+    val logger = logFile match {
+      case None => System.out
+      case Some(f) => new PrintStream(f)
+    }
+    (dut, new VerilatorBackend(dut, cmd, logger))
   }
 }
 
 private[iotesters] class VCSBackend(dut: chisel3.Module,
                                     cmd: Seq[String],
+                                    logger: PrintStream,
                                     _seed: Long = System.currentTimeMillis)
-           extends VerilatorBackend(dut, cmd, _seed)
+           extends VerilatorBackend(dut, cmd, logger, _seed)

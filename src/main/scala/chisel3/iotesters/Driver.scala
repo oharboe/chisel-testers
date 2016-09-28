@@ -5,7 +5,7 @@ package chisel3.iotesters
 import chisel3.Module
 import chisel3.Driver.createTempDirectory
 import scala.util.DynamicVariable
-import java.io.File
+import java.io.{File, PrintStream}
 
 object Driver {
   private val backendVar = new DynamicVariable[Option[Backend]](None)
@@ -19,12 +19,15 @@ object Driver {
   def apply[T <: Module](dutGen: () => T,
                          backendType: String = "firrtl",
                          dir: File = createTempDirectory("iotesters"),
-                         debug: Boolean = false)
+                         debug: Boolean = false,
+                         logFile: Option[File] = None,
+                         waveform: Option[File] = None,
+                         vpdmem: Boolean = false)
                          (testerGen: T => PeekPokeTester[T]): Boolean = {
     val (dut, backend) = backendType match {
-      case "firrtl" => setupFirrtlTerpBackend(dutGen) // TODO: support dir & debug?
-      case "verilator" => setupVerilatorBackend(dutGen, dir, debug)
-      case "vcs" => setupVCSBackend(dutGen, dir, debug)
+      case "firrtl" => setupFirrtlTerpBackend(dutGen, logFile) // TODO: support dir & debug?
+      case "verilator" => setupVerilatorBackend(dutGen, dir, debug, logFile, waveform, vpdmem)
+      case "vcs" => setupVCSBackend(dutGen, dir, debug, logFile, waveform, vpdmem)
       case _ => throw new Exception("Unrecongnized backend type $backendType")
     }
     backendVar.withValue(Some(backend)) {
@@ -43,9 +46,9 @@ object Driver {
                            dir: File = createTempDirectory("iotesters"),
                            debug: Boolean = false): T = {
     val (dut, _) = backendType match {
-      case "firrtl" => setupFirrtlTerpBackend(dutGen) // TODO: suport debug & dir?
-      case "verilator" => setupVerilatorBackend(dutGen, dir, debug)
-      case "vcs" => setupVCSBackend(dutGen, dir, debug)
+      case "firrtl" => setupFirrtlTerpBackend(dutGen, None) // TODO: suport debug & dir?
+      case "verilator" => setupVerilatorBackend(dutGen, dir, debug, None, None, false)
+      case "vcs" => setupVCSBackend(dutGen, dir, debug, None, None, false)
       case _ => throw new Exception("Unrecongnized backend type $backendType")
     }
     dut
@@ -56,11 +59,16 @@ object Driver {
     * Requires the caller to supply path the already compile Verilator binary
     */
   def run[T <: Module](dutGen: () => T,
-                       cmd: Seq[String])
+                       cmd: Seq[String],
+                       logFile: Option[File])
                       (testerGen: T => PeekPokeTester[T]): Boolean = {
     val circuit = chisel3.Driver.elaborate(dutGen)
     val dut = getTopModule(circuit).asInstanceOf[T]
-    backendVar.withValue(Some(new VerilatorBackend(dut, cmd))) {
+    val logger = logFile match {
+      case None => System.out
+      case Some(f) => new PrintStream(f)
+    }
+    backendVar.withValue(Some(new VerilatorBackend(dut, cmd, logger))) {
       try {
         testerGen(dut).finish
       } catch { case e: Throwable =>
@@ -75,10 +83,11 @@ object Driver {
                        binary: String,
                        args: String*)
                       (testerGen: T => PeekPokeTester[T]): Boolean =
-    run(dutGen, binary +: args.toSeq)(testerGen)
+    run(dutGen, binary +: args.toSeq, None)(testerGen)
 
   def run[T <: Module](dutGen: () => T,
                        binary: File,
+                       logFile: Option[File] = None,
                        waveform: Option[File] = None,
                        vpdmem: Boolean = false)
                       (testerGen: T => PeekPokeTester[T]): Boolean = {
@@ -88,6 +97,6 @@ object Driver {
       case (Some(f), false) => Seq(s"+waveform=$f")
       case (Some(f), true) => Seq(s"+waveform=$f +vpdmem")
     }
-    run(dutGen, binary.toString +: args.toSeq)(testerGen)
+    run(dutGen, binary.toString +: args.toSeq, logFile)(testerGen)
   }
 }

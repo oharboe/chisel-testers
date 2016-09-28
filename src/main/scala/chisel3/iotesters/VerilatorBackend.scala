@@ -264,7 +264,12 @@ class VerilatorCppHarnessCompiler(dut: Chisel.Module,
 }
 
 private[iotesters] object setupVerilatorBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T, dir: File, debug: Boolean): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T,
+                                 dir: File,
+                                 debug: Boolean,
+                                 logFile: Option[File],
+                                 waveform: Option[File],
+                                 vpdmem: Boolean): (T, Backend) = {
     dir.mkdirs
     // Generate CHIRRTL
     val circuit = chisel3.Driver.elaborate(dutGen)
@@ -291,51 +296,63 @@ private[iotesters] object setupVerilatorBackend {
     verilogToCpp(circuit.name, circuit.name, dir, Seq(), new File(cppHarnessFileName), debug).!
     chisel3.Driver.cppToExe(circuit.name, dir).!
 
-    (dut, new VerilatorBackend(dut, Seq((new File(dir, s"V${circuit.name}")).toString)))
+    val bin = new File(dir, s"V${circuit.name}")
+    val cmd = (waveform, vpdmem) match {
+      case (None, false) => Seq(bin.toString)
+      case (None, true) => Seq(bin.toString, "+vpdmem")
+      case (Some(f), false) => Seq(bin.toString, s"+waveform=$f")
+      case (Some(f), true) => Seq(bin.toString, s"+waveform=$f", "+vpdmem")
+    }
+    val logger = logFile match {
+      case None => System.out
+      case Some(f) => new PrintStream(f)
+    }
+    (dut, new VerilatorBackend(dut, cmd, logger))
   }
 }
 
 private[iotesters] class VerilatorBackend(dut: Chisel.Module, 
                                           cmd: Seq[String],
-                                          _seed: Long = System.currentTimeMillis) extends Backend(_seed) {
+                                          logger: PrintStream,
+                                          _seed: Long = System.currentTimeMillis) extends Backend(logger, _seed) {
 
-  val simApiInterface = new SimApiInterface(dut, cmd)
+  val simApiInterface = new SimApiInterface(dut, cmd, logger)
 
   def poke(signal: InstanceId, value: BigInt, off: Option[Int])
-          (implicit logger: PrintStream, verbose: Boolean, base: Int) {
+          (implicit verbose: Boolean, base: Int) {
     val idx = off map (x => s"[$x]") getOrElse ""
     val path = s"${signal.parentPathName}.${validName(signal.instanceName)}$idx"
     poke(path, value)
   }
 
   def peek(signal: InstanceId, off: Option[Int])
-          (implicit logger: PrintStream, verbose: Boolean, base: Int): BigInt = {
+          (implicit verbose: Boolean, base: Int): BigInt = {
     val idx = off map (x => s"[$x]") getOrElse ""
     val path = s"${signal.parentPathName}.${validName(signal.instanceName)}$idx"
     peek(path)
   }
 
   def expect(signal: InstanceId, expected: BigInt, msg: => String)
-            (implicit logger: PrintStream, verbose: Boolean, base: Int): Boolean = {
+            (implicit verbose: Boolean, base: Int): Boolean = {
     val path = s"${signal.parentPathName}.${validName(signal.instanceName)}"
     expect(path, expected, msg)
   }
 
   def poke(path: String, value: BigInt)
-          (implicit logger: PrintStream, verbose: Boolean, base: Int) {
+          (implicit verbose: Boolean, base: Int) {
     if (verbose) logger println s"  POKE ${path} <- ${bigIntToStr(value, base)}"
     simApiInterface.poke(path, value)
   }
 
   def peek(path: String)
-          (implicit logger: PrintStream, verbose: Boolean, base: Int): BigInt = {
+          (implicit verbose: Boolean, base: Int): BigInt = {
     val result = simApiInterface.peek(path) getOrElse BigInt(rnd.nextInt)
     if (verbose) logger println s"  PEEK ${path} -> ${bigIntToStr(result, base)}"
     result
   }
 
   def expect(path: String, expected: BigInt, msg: => String = "")
-            (implicit logger: PrintStream, verbose: Boolean, base: Int): Boolean = {
+            (implicit verbose: Boolean, base: Int): Boolean = {
     val got = simApiInterface.peek(path) getOrElse BigInt(rnd.nextInt)
     val good = got == expected
     if (verbose) logger println (
@@ -344,7 +361,7 @@ private[iotesters] class VerilatorBackend(dut: Chisel.Module,
     good
   }
 
-  def step(n: Int)(implicit logger: PrintStream): Unit = {
+  def step(n: Int): Unit = {
     simApiInterface.step(n)
   }
 
@@ -352,7 +369,7 @@ private[iotesters] class VerilatorBackend(dut: Chisel.Module,
     simApiInterface.reset(n)
   }
 
-  def finish(implicit logger: PrintStream): Unit = {
+  def finish: Unit = {
     simApiInterface.finish
   }
 }

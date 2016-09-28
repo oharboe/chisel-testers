@@ -12,14 +12,15 @@ import firrtl_interpreter.InterpretiveTester
 
 private[iotesters] class FirrtlTerpBackend(dut: Module,
                                            firrtlIR: String,
-                                           _seed: Long = System.currentTimeMillis) extends Backend(_seed) {
+                                           logger: PrintStream,
+                                           _seed: Long = System.currentTimeMillis) extends Backend(logger, _seed) {
   val interpretiveTester = new InterpretiveTester(firrtlIR)
   reset(5) // reset firrtl interpreter on construction
 
   val portNames = getDataNames("io", dut.io).toMap
 
   def poke(signal: InstanceId, value: BigInt, off: Option[Int])
-          (implicit logger: PrintStream, verbose: Boolean, base: Int): Unit = {
+          (implicit verbose: Boolean, base: Int): Unit = {
     signal match {
       case port: Bits =>
         val name = portNames(port)
@@ -30,7 +31,7 @@ private[iotesters] class FirrtlTerpBackend(dut: Module,
   }
 
   def peek(signal: InstanceId, off: Option[Int])
-          (implicit logger: PrintStream, verbose: Boolean, base: Int): BigInt = {
+          (implicit verbose: Boolean, base: Int): BigInt = {
     signal match {
       case port: Bits =>
         val name = portNames(port)
@@ -42,7 +43,7 @@ private[iotesters] class FirrtlTerpBackend(dut: Module,
   }
 
   def expect(signal: InstanceId, expected: BigInt, msg: => String)
-            (implicit logger: PrintStream, verbose: Boolean, base: Int) : Boolean = {
+            (implicit verbose: Boolean, base: Int) : Boolean = {
     signal match {
       case port: Bits =>
         val name = portNames(port)
@@ -57,23 +58,23 @@ private[iotesters] class FirrtlTerpBackend(dut: Module,
   }
 
   def poke(path: String, value: BigInt)
-          (implicit logger: PrintStream, verbose: Boolean, base: Int): Unit = {
+          (implicit verbose: Boolean, base: Int): Unit = {
     assert(false)
   }
 
   def peek(path: String)
-          (implicit logger: PrintStream, verbose: Boolean, base: Int): BigInt = {
+          (implicit verbose: Boolean, base: Int): BigInt = {
     assert(false)
     BigInt(rnd.nextInt)
   }
 
   def expect(path: String, expected: BigInt, msg: => String)
-            (implicit logger: PrintStream, verbose: Boolean, base: Int) : Boolean = {
+            (implicit verbose: Boolean, base: Int) : Boolean = {
     assert(false)
     false
   }
 
-  def step(n: Int)(implicit logger: PrintStream): Unit = {
+  def step(n: Int): Unit = {
     interpretiveTester.step(n)
   }
 
@@ -83,17 +84,20 @@ private[iotesters] class FirrtlTerpBackend(dut: Module,
     interpretiveTester.poke("reset", 0)
   }
 
-  def finish(implicit logger: PrintStream): Unit = Unit
+  def finish: Unit = Unit
 }
 
 private[iotesters] object setupFirrtlTerpBackend {
-  def apply[T <: chisel3.Module](dutGen: () => T): (T, Backend) = {
+  def apply[T <: chisel3.Module](dutGen: () => T, logFile: Option[File]): (T, Backend) = {
     val circuit = chisel3.Driver.elaborate(dutGen)
     val dut = getTopModule(circuit).asInstanceOf[T]
     val dir = new File(s"test_run_dir/${dut.getClass.getName}") ; dir.mkdirs()
-
+    val logger = logFile match {
+      case None => System.out
+      case Some(f) => new PrintStream(f)
+    }
     // Dump FIRRTL for debugging
     chisel3.Driver.dumpFirrtl(circuit, Some(new File(dir, s"${circuit.name}.fir")))
-    (dut, new FirrtlTerpBackend(dut, chisel3.Driver.emit(dutGen)))
+    (dut, new FirrtlTerpBackend(dut, chisel3.Driver.emit(dutGen), logger))
   }
 }
