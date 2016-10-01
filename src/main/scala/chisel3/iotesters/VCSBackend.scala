@@ -8,7 +8,7 @@ import java.nio.file.{FileAlreadyExistsException, Files, Paths}
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /**
-  * Copies the necessary header files used for verilator compilation to the specified destination folder
+  * Copies the necessary header files used for vcs compilation to the specified destination folder
   */
 object copyVpiFiles {
   def apply(destinationDirPath: String): Unit = {
@@ -17,11 +17,13 @@ object copyVpiFiles {
     val vpiHFilePath = Paths.get(destinationDirPath + "/vpi.h")
     val vpiCppFilePath = Paths.get(destinationDirPath + "/vpi.cpp")
     val vpiTabFilePath = Paths.get(destinationDirPath + "/vpi.tab")
+    val vcsTestFilePath = Paths.get(destinationDirPath + "/vcs_test.v")
     try {
       Files.createFile(simApiHFilePath)
       Files.createFile(vpiHFilePath)
       Files.createFile(vpiCppFilePath)
       Files.createFile(vpiTabFilePath)
+      Files.createFile(vcsTestFilePath)
     } catch {
       case x: FileAlreadyExistsException =>
         System.out.format("")
@@ -34,81 +36,7 @@ object copyVpiFiles {
     Files.copy(getClass.getResourceAsStream("/vpi.h"), vpiHFilePath, REPLACE_EXISTING)
     Files.copy(getClass.getResourceAsStream("/vpi.cpp"), vpiCppFilePath, REPLACE_EXISTING)
     Files.copy(getClass.getResourceAsStream("/vpi.tab"), vpiTabFilePath, REPLACE_EXISTING)
-  }
-}
-
-/**
-  * Generates the Module specific verilator harness cpp file for verilator compilation
-  */
-object genVCSVerilogHarness {
-  def apply(dut: chisel3.Module, writer: Writer, vpdFilePath: String, isGateLevel: Boolean = false) {
-    val dutName = dut.name
-    val (inputs, outputs) = getDataNames("io", dut.io) partition (_._1.dir == chisel3.INPUT)
-
-    writer write "module test;\n"
-    writer write "  reg clock = 1;\n"
-    writer write "  reg reset = 1;\n"
-    val delay = if (isGateLevel) "#0.1" else ""
-    inputs foreach { case (node, name) =>
-      writer write s"  reg[${node.getWidth-1}:0] $name = 0;\n"
-      writer write s"  wire[${node.getWidth-1}:0] ${name}_delay;\n"
-      writer write s"  assign $delay ${name}_delay = $name;\n"
-    }
-    outputs foreach { case (node, name) =>
-      writer write s"  wire[${node.getWidth-1}:0] ${name}_delay;\n"
-      writer write s"  wire[${node.getWidth-1}:0] $name;\n"
-      writer write s"  assign $delay $name = ${name}_delay;\n"
-    }
-
-    writer write "  always #`CLOCK_PERIOD clock = ~clock;\n"
-    writer write "  reg vcdon = 0;\n"
-    writer write "  reg [1023:0] vcdfile = 0;\n"
-    writer write "  reg [1023:0] vpdfile = 0;\n"
-
-    writer write "\n  /*** DUT instantiation ***/\n"
-    writer write s"  ${dutName} ${dutName}(\n"
-    writer write "    .clock(clock),\n"
-    writer write "    .reset(reset),\n"
-    writer write ((inputs ++ outputs).unzip._2 map (name => s"    .${name}(${name}_delay)") mkString ",\n")
-    writer write "  );\n\n"
-
-    writer write "  initial begin\n"
-    writer write "    $init_rsts(reset);\n"
-    writer write "    $init_ins(%s);\n".format(inputs.unzip._2 mkString ", ")
-    writer write "    $init_outs(%s);\n".format(outputs.unzip._2 mkString ", ")
-    writer write "    $init_sigs(%s);\n".format(dutName)
-    writer write "    /*** VCD & VPD dump ***/\n"
-    writer write "    if ($value$plusargs(\"vcdfile=%s\", vcdfile)) begin\n"
-    writer write "      $dumpfile(vcdfile);\n"
-    writer write "      $dumpvars(0, %s);\n".format(dutName)
-    writer write "      $dumpoff;\n"
-    writer write "      vcdon = 0;\n"
-    writer write "    end\n"
-    writer write "    if ($value$plusargs(\"waveform=%s\", vpdfile)) begin\n"
-    writer write "      $vcdplusfile(vpdfile);\n"
-    writer write "    end else begin\n"
-    writer write "      $vcdplusfile(\"%s\");\n".format(vpdFilePath)
-    writer write "    end\n"
-    writer write "    if ($test$plusargs(\"vpdmem\")) begin\n"
-    writer write "      $vcdplusmemon;\n"
-    writer write "    end\n"
-    writer write "    $vcdpluson(0);\n"
-    writer write "  end\n\n"
-
-    writer write "  always @(%s clock) begin\n".format(if (isGateLevel) "posedge" else "negedge")
-    writer write "    if (vcdfile && reset) begin\n"
-    writer write "      $dumpoff;\n"
-    writer write "      vcdon = 0;\n"
-    writer write "    end\n"
-    writer write "    else if (vcdfile && !vcdon) begin\n"
-    writer write "      $dumpon;\n"
-    writer write "      vcdon = 1;\n"
-    writer write "    end\n"
-    writer write "    %s $tick();\n".format(if (isGateLevel) "#0.05" else "")
-    writer write "    $vcdplusflush;\n"
-    writer write "  end\n\n"
-    writer write "endmodule\n"
-    writer.close
+    Files.copy(getClass.getResourceAsStream("/vcs_test.v"), vcsTestFilePath, REPLACE_EXISTING)
   }
 }
 
@@ -129,12 +57,11 @@ private[iotesters] object setupVCSBackend {
     verilogWriter.close
 
     // Generate Harness
-    val vcsHarnessFileName = s"${circuit.name}-harness.v"
-    val vcsHarnessFile = new File(dir, vcsHarnessFileName)
-    val vpdFile = new File(dir, s"${circuit.name}.vpd")
+    val testHarnessFileName = s"${circuit.name}-harness.v"
+    val testHarnessFile = new File(dir, testHarnessFileName)
     copyVpiFiles(dir.toString)
-    genVCSVerilogHarness(dut, new FileWriter(vcsHarnessFile), vpdFile.toString)
-    assert(verilogToVCS(circuit.name, dir, new File(vcsHarnessFileName)).! == 0)
+    genVerilogHarness(dut, new FileWriter(testHarnessFile))
+    assert(verilogToVCS(circuit.name, dir, new File(testHarnessFileName)).! == 0)
 
     (dut, new VCSBackend(dut, Seq((new File(dir, circuit.name)).toString)))
   }

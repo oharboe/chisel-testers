@@ -77,7 +77,7 @@ private[iotesters] object verilogToVCS {
   def apply(
     topModule: String,
     dir: java.io.File,
-    vcsHarness: java.io.File
+    testHarness: java.io.File
                 ): ProcessBuilder = {
     val ccFlags = Seq("-I$VCS_HOME/include", "-I$dir", "-fPIC", "-std=c++11")
     val vcsFlags = Seq("-full64",
@@ -93,7 +93,7 @@ private[iotesters] object verilogToVCS {
       "-cpp", "g++", "-O2", "-LDFLAGS", "-lstdc++",
       "-CFLAGS", "\"%s\"".format(ccFlags mkString " "))
     val cmd = Seq("cd", dir.toString, "&&", "vcs") ++ vcsFlags ++ Seq(
-      "-o", topModule, s"${topModule}.v", vcsHarness.toString, "vpi.cpp") mkString " "
+      "-o", topModule, s"${topModule}.v", testHarness.toString, "vcs_test.v", "vpi.cpp") mkString " "
     println(s"$cmd")
     Seq("bash", "-c", cmd)
   }
@@ -121,5 +121,46 @@ private[iotesters] object TesterProcess {
   }
   def kill(p: VerilatorBackend) {
     kill(p.simApiInterface)
+  }
+}
+
+object genVerilogHarness {
+  // Generate synthesizable verilog harness
+  def apply(dut: chisel3.Module, writer: java.io.Writer) {
+    val dutName = dut.name
+    val (inputs, outputs) = getDataNames("io", dut.io) partition (_._1.dir == chisel3.INPUT)
+
+    writer write "module test_harness(input clock);\n"
+    writer write "  reg reset = 1;\n"
+    inputs foreach { case (node, name) =>
+      writer write s"  reg[${node.getWidth-1}:0] $name = 0;\n"
+    }
+    outputs foreach { case (node, name) =>
+      writer write s"  wire[${node.getWidth-1}:0] $name;\n"
+    }
+
+    writer write "\n  /*** DUT instantiation ***/\n"
+    writer write s"  ${dutName} ${dutName}(\n"
+    writer write "    .clock(clock),\n"
+    writer write "    .reset(reset),\n"
+    writer write ((inputs ++ outputs).unzip._2 map (name => s"    .${name}(${name})") mkString ",\n")
+    writer write "\n  );\n\n"
+
+    writer write "  initial begin\n"
+    writer write "    $init_rsts(reset);\n"
+    writer write "    $init_ins(\n"
+    writer write (inputs.unzip._2 map (name => s"      ${name}") mkString ",\n")
+    writer write "\n    );\n"
+    writer write "    $init_outs(\n"
+    writer write (outputs.unzip._2 map (name => s"      ${name}") mkString ",\n")
+    writer write "\n    );\n"
+    writer write "    $init_sigs(%s);\n".format(dutName)
+    writer write "  end\n\n"
+
+    writer write "  always @(negedge clock) begin\n"
+    writer write "    $tick();\n"
+    writer write "  end\n\n"
+    writer write "endmodule\n"
+    writer.close
   }
 }

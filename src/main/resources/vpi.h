@@ -57,13 +57,11 @@ public:
     vpiHandle syscall_handle = vpi_handle(vpiSysTfCall, NULL);
     vpiHandle arg_iter = vpi_iterate(vpiArgument, syscall_handle);
     top_handle = vpi_scan(arg_iter);
-    dump_handle = vpi_scan(arg_iter);
     probe_signals();
   }
 
 private:
   vpiHandle top_handle;
-  vpiHandle dump_handle;
   std::queue<vpiHandle> forces;
   std::map<vpiHandle, size_t> sizes;
   std::map<vpiHandle, size_t> chunks;
@@ -161,20 +159,6 @@ private:
     data_s.value     = NULL;
     data_s.user_data = NULL;
     vpi_free_object(vpi_register_cb(&data_s));
-  }
-
-  virtual void dumpon() {
-    s_vpi_value value_s;
-    value_s.format    = vpiHexStrVal;
-    value_s.value.str = (PLI_BYTE8*) "1";
-    vpi_put_value(dump_handle, &value_s, NULL, vpiNoDelay);
-  }
-
-  virtual void dumpoff() {
-    s_vpi_value value_s;
-    value_s.format    = vpiHexStrVal;
-    value_s.value.str = (PLI_BYTE8*) "0";
-    vpi_put_value(dump_handle, &value_s, NULL, vpiNoDelay);
   }
 
   virtual size_t add_signal(vpiHandle& sig_handle, std::string& wire) {
