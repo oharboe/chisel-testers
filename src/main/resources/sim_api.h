@@ -18,6 +18,7 @@
 #include <time.h>
 
 enum SIM_CMD { RESET, STEP, UPDATE, POKE, PEEK, FORCE, GETID, GETCHK, FIN };
+enum PUT_TYPE { PUT_IO, PUT_REG, PUT_FORCE };
 const int SIM_CMD_MAX_BYTES = 1024;
 const int channel_data_offset_64bw = 4;	// Offset from start of channel buffer to actual user data in 64bit words.
 static size_t gSystemPageSize;
@@ -47,40 +48,41 @@ class channel_t {
 public:
 #define ROUND_UP(N, S) ((((N) + (S) -1 ) & (~((S) - 1))))
   void init_map() {
-	static std::string m_prefix("channel_t::init_map - ");
-	// ensure the data is available (a full page worth).
+    static std::string m_prefix("channel_t::init_map - ");
+    // ensure the data is available (a full page worth).
     if (lseek(fd, map_size-1, SEEK_SET) == -1) {
-    	perror((m_prefix + "file: " + full_file_path + " seek to end of page").c_str());
-    	exit(1);
+      perror((m_prefix + "file: " + full_file_path + " seek to end of page").c_str());
+      exit(1);
     }
     if (write(fd, "", 1) == -1) {
-    	perror((m_prefix + "file: " + full_file_path + " write byte").c_str());
-    	exit(1);
+      perror((m_prefix + "file: " + full_file_path + " write byte").c_str());
+      exit(1);
     }
     if (fsync(fd) == -1) {
-    	perror((m_prefix + "file: " + full_file_path + " fsync").c_str());
-    	exit(1);
+      perror((m_prefix + "file: " + full_file_path + " fsync").c_str());
+      exit(1);
     }
     channel = (char*)mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (channel == MAP_FAILED) {
-    	perror((m_prefix + "file: " + full_file_path + " mmap").c_str());
-    	exit(1);
+      perror((m_prefix + "file: " + full_file_path + " mmap").c_str());
+      exit(1);
     }
   }
-  channel_t(std::string _file_name, size_t _data_size): file_name(_file_name), fd(open(file_name.c_str(),  O_RDWR|O_CREAT|O_TRUNC, (mode_t)0600)),
-		  map_size(ROUND_UP(_data_size + channel_data_offset_64bw * 8, gSystemPageSize)) {
-	static std::string m_prefix("channel_t::channel_t: ");
-    char * rp = realpath(file_name.c_str(), NULL);
+  channel_t(std::string _file_name, size_t _data_size):
+      file_name(_file_name), fd(open(file_name.c_str(),  O_RDWR|O_CREAT|O_TRUNC, (mode_t)0600)),
+      map_size(ROUND_UP(_data_size + channel_data_offset_64bw * 8, gSystemPageSize)) {
+    static std::string m_prefix("channel_t::channel_t: ");
+    char* rp = realpath(file_name.c_str(), NULL);
     full_file_path = std::string(rp == NULL ? file_name : rp);
     if (rp != NULL) {
-    	free(rp);
-    	rp = NULL;
+      free(rp);
+      rp = NULL;
     }
-	if (fd == -1) {
-    	perror((m_prefix + "file: " + full_file_path + " open").c_str());
-		exit(1);
-	}
-	init_map();
+    if (fd == -1) {
+      perror((m_prefix + "file: " + full_file_path + " open").c_str());
+      exit(1);
+    }
+    init_map();
   }
 
   ~channel_t() {
@@ -202,7 +204,7 @@ private:
   virtual void step() = 0;
   virtual void update() = 0; 
   // Consumes input tokens 
-  virtual size_t put_value(T& sig, uint64_t* data, bool force = false) = 0;
+  virtual size_t put_value(T& sig, uint64_t* data, PUT_TYPE type) = 0;
   // Generate output tokens
   virtual size_t get_value(T& sig, uint64_t* data) = 0;
   // Find a signal of path 
@@ -299,7 +301,7 @@ private:
     in_channel->aquire();
     bool valid = in_channel->valid();
     if (valid) {
-      put_value(obj, in_channel->data(), force);
+      put_value(obj, in_channel->data(), force ? PUT_FORCE : PUT_REG);
       in_channel->consume();
     }
     in_channel->release();
@@ -325,7 +327,7 @@ private:
       uint64_t *data = in_channel->data();
       for (size_t i = 0 ; i < sim_data.inputs.size() ; i++) {
         T& sig = sim_data.inputs[i];
-        off += put_value(sig, data+off);
+        off += put_value(sig, data+off, PUT_IO);
       }
       in_channel->consume();
     }

@@ -15,7 +15,7 @@ public:
   ~vpi_api_t() { }
 
   virtual void tick() {
-    while(!forces.empty()) {
+    while (!forces.empty()) {
       s_vpi_value value_s;
       value_s.format = vpiHexStrVal;
       vpi_get_value(forces.front(), &value_s);
@@ -66,28 +66,60 @@ private:
   std::map<vpiHandle, size_t> sizes;
   std::map<vpiHandle, size_t> chunks;
 
-  void put_value(vpiHandle& sig, std::string& value, bool force=false) {
+  void put_value(vpiHandle& sig, std::string& value, PUT_TYPE type) {
     s_vpi_value value_s;
+    s_vpi_time time_s;
+    PLI_INT32 flag;
     value_s.format    = vpiHexStrVal;
     value_s.value.str = (PLI_BYTE8*) value.c_str();
-    vpi_put_value(sig, &value_s, NULL, force ? vpiForceFlag : vpiNoDelay);
-    if (force) forces.push(sig); 
+    time_s.type       = vpiScaledRealTime;
+    time_s.real       = 0.0;
+    switch (type) {
+      case PUT_IO:
+        flag = vpiInertialDelay;
+        break;
+      case PUT_REG:
+        flag = vpiNoDelay;
+        break;
+      case PUT_FORCE:
+        flag = vpiForceFlag;
+        forces.push(sig);
+        break;
+      default: break;
+    }
+    vpi_put_value(sig, &value_s, &time_s, flag);
   }
 
-  size_t put_value(vpiHandle& sig, uint64_t* data, bool force=false) {
+  size_t put_value(vpiHandle& sig, uint64_t* data, PUT_TYPE type) {
     size_t chunk = get_chunk(sig);
-    s_vpi_value  value_s;
+    s_vpi_value value_s;
     s_vpi_vecval vecval_s[2*chunk];
+    s_vpi_time time_s;
+    PLI_INT32 flag;
     value_s.format       = vpiVectorVal;
     value_s.value.vector = vecval_s; 
+    time_s.type          = vpiScaledRealTime;
+    time_s.real          = 0.0;
     for (size_t i = 0 ; i < chunk ; i++) {
       value_s.value.vector[2*i].aval = (int)data[i]; 
       value_s.value.vector[2*i+1].aval = (int)(data[i]>>32);
       value_s.value.vector[2*i].bval = 0;
       value_s.value.vector[2*i+1].bval = 0;
     }
-    vpi_put_value(sig, &value_s, NULL, force ? vpiForceFlag : vpiNoDelay);
-    if (force) forces.push(sig); 
+    switch (type) {
+      case PUT_IO:
+        flag = vpiInertialDelay;
+        break;
+      case PUT_REG:
+        flag = vpiNoDelay;
+        break;
+      case PUT_FORCE:
+        flag = vpiForceFlag;
+        forces.push(sig);
+        break;
+      default: break;
+    }
+    vpi_put_value(sig, &value_s, &time_s, flag);
     return chunk;
   }
 
@@ -125,18 +157,24 @@ private:
   virtual void reset() {
     for (size_t i = 0 ; i < sim_data.resets.size() ; i++) {
       s_vpi_value value_s;
+      s_vpi_time time_s;
       value_s.format    = vpiHexStrVal;
       value_s.value.str = (PLI_BYTE8*) "1";
-      vpi_put_value(sim_data.resets[i], &value_s, NULL, vpiNoDelay);
+      time_s.type       = vpiScaledRealTime;
+      time_s.real       = 0.0;
+      vpi_put_value(sim_data.resets[i], &value_s, &time_s, vpiInertialDelay);
     }
   }
 
   virtual void start() {
     for (size_t i = 0 ; i < sim_data.resets.size() ; i++) {
       s_vpi_value value_s;
+      s_vpi_time time_s;
       value_s.format    = vpiHexStrVal;
       value_s.value.str = (PLI_BYTE8*) "0";
-      vpi_put_value(sim_data.resets[i], &value_s, NULL, vpiNoDelay);
+      time_s.type       = vpiScaledRealTime;
+      time_s.real       = 0.0;
+      vpi_put_value(sim_data.resets[i], &value_s, &time_s, vpiInertialDelay);
     }
   }
 
