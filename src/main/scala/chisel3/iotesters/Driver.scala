@@ -8,6 +8,7 @@ import firrtl.{ExecutionOptionsManager, HasFirrtlOptions}
 import firrtl_interpreter.{FirrtlRepl, ReplConfig, HasReplConfig, HasInterpreterOptions}
 
 import scala.util.DynamicVariable
+import scala.util.Properties.envOrElse
 
 object Driver {
   private val backendVar = new DynamicVariable[Option[Backend]](None)
@@ -122,9 +123,10 @@ object Driver {
   /**
     * Runs the ClassicTester and returns a Boolean indicating test success or failure
     * @@backendType determines whether the ClassicTester uses verilator or the firrtl interpreter to simulate the circuit
-    * Will do intermediate compliation steps to setup the backend specified, including cpp compilation for the verilator backend and firrtl IR compilation for the firrlt backend
+    * Will do intermediate compilation steps to setup the backend specified, including cpp compilation for the verilator backend and firrtl IR compilation for the firrlt backend
+    * The default backend type (if one is not explicitly supplied) is the value of the TESTER_BACKENDS environment variable or "firrtl" if the former is unset.
     */
-  def apply[T <: Module](dutGen: () => T, backendType: String = "firrtl")(
+  def apply[T <: Module](dutGen: () => T, backendType: String = envOrElse("TESTER_BACKENDS", "firrtl"))(
       testerGen: T => PeekPokeTester[T]): Boolean = {
     val optionsManager = new TesterOptionsManager
 
