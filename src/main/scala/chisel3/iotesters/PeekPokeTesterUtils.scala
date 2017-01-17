@@ -85,7 +85,7 @@ private[iotesters] object verilogToVCS {
     dir: java.io.File,
     vcsHarness: java.io.File
                 ): ProcessBuilder = {
-    val ccFlags = Seq("-I$VCS_HOME/include", "-I$dir", "-fPIC", "-std=c++11")
+    val ccFlags = Seq("-I$VCS_HOME/include", s"-I$dir", "-fPIC", "-std=c++11")
     val vcsFlags = Seq("-full64",
       "-quiet",
       "-timescale=1ns/1ps",
@@ -96,7 +96,7 @@ private[iotesters] object verilogToVCS {
       "+vcs+initreg+random",
       "+define+CLOCK_PERIOD=1",
       "-P", "vpi.tab",
-      "-cpp", "g++", "-O2", "-LDFLAGS", "-lstdc++",
+      "-cpp", "\"g++ -O2\"", "-LDFLAGS", "-lstdc++",
       "-CFLAGS", "\"%s\"".format(ccFlags mkString " "))
     val cmd = Seq("cd", dir.toString, "&&", "vcs") ++ vcsFlags ++ Seq(
       "-o", topModule, s"${topModule}.v", vcsHarness.toString, "vpi.cpp") mkString " "
