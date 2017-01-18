@@ -97,7 +97,7 @@ private[iotesters] object verilogToVCS {
       "+define+CLOCK_PERIOD=1",
       "-P", "vpi.tab",
       "-cpp", "\"g++ -O2\"", "-LDFLAGS", "-lstdc++",
-      "-CFLAGS", "\"%s\"".format(ccFlags mkString " "))
+      ccFlags map (f => s"-CFLAGS $f") mkString " ")
     val cmd = Seq("cd", dir.toString, "&&", "vcs") ++ vcsFlags ++ Seq(
       "-o", topModule, s"${topModule}.v", vcsHarness.toString, "vpi.cpp") mkString " "
     println(s"$cmd")
